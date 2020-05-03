@@ -1,17 +1,19 @@
+import * as productActions from './../state/product.action';
+import { Store } from '@ngrx/store';
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
-
-import { Subscription } from 'rxjs';
 
 import { Product } from '../product';
 import { ProductService } from '../product.service';
 import { GenericValidator } from '../../shared/generic-validator';
 import { NumberValidators } from '../../shared/number.validator';
 
+import * as fromProduct from '../state/product.reducer';
+
 @Component({
   selector: 'pm-product-edit',
   templateUrl: './product-edit.component.html',
-  styleUrls: ['./product-edit.component.css']
+  styleUrls: ['./product-edit.component.css'],
 })
 export class ProductEditComponent implements OnInit, OnDestroy {
   pageTitle = 'Product Edit';
@@ -19,30 +21,31 @@ export class ProductEditComponent implements OnInit, OnDestroy {
   productForm: FormGroup;
 
   product: Product | null;
-  sub: Subscription;
 
   // Use with the generic validation message class
   displayMessage: { [key: string]: string } = {};
   private validationMessages: { [key: string]: { [key: string]: string } };
   private genericValidator: GenericValidator;
 
-  constructor(private fb: FormBuilder,
-              private productService: ProductService) {
-
+  constructor(
+    private fb: FormBuilder,
+    private productService: ProductService,
+    private store: Store<fromProduct.State>
+  ) {
     // Defines all of the validation messages for the form.
     // These could instead be retrieved from a file or database.
     this.validationMessages = {
       productName: {
         required: 'Product name is required.',
         minlength: 'Product name must be at least three characters.',
-        maxlength: 'Product name cannot exceed 50 characters.'
+        maxlength: 'Product name cannot exceed 50 characters.',
       },
       productCode: {
-        required: 'Product code is required.'
+        required: 'Product code is required.',
       },
       starRating: {
-        range: 'Rate the product between 1 (lowest) and 5 (highest).'
-      }
+        range: 'Rate the product between 1 (lowest) and 5 (highest).',
+      },
     };
 
     // Define an instance of the validator for use with this form,
@@ -53,33 +56,41 @@ export class ProductEditComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Define the form group
     this.productForm = this.fb.group({
-      productName: ['', [Validators.required,
-                         Validators.minLength(3),
-                         Validators.maxLength(50)]],
+      productName: [
+        '',
+        [
+          Validators.required,
+          Validators.minLength(3),
+          Validators.maxLength(50),
+        ],
+      ],
       productCode: ['', Validators.required],
       starRating: ['', NumberValidators.range(1, 5)],
-      description: ''
+      description: '',
     });
 
     // Watch for changes to the currently selected product
-    this.sub = this.productService.selectedProductChanges$.subscribe(
-      selectedProduct => this.displayProduct(selectedProduct)
-    );
+    this.store
+      .select(fromProduct.getCurrentProduct)
+      .subscribe((currentProduct) => this.displayProduct(currentProduct));
 
     // Watch for value changes
     this.productForm.valueChanges.subscribe(
-      value => this.displayMessage = this.genericValidator.processMessages(this.productForm)
+      (value) =>
+        (this.displayMessage = this.genericValidator.processMessages(
+          this.productForm
+        ))
     );
   }
 
-  ngOnDestroy(): void {
-    this.sub.unsubscribe();
-  }
+  ngOnDestroy(): void {}
 
   // Also validate on blur
   // Helpful if the user tabs through required fields
   blur(): void {
-    this.displayMessage = this.genericValidator.processMessages(this.productForm);
+    this.displayMessage = this.genericValidator.processMessages(
+      this.productForm
+    );
   }
 
   displayProduct(product: Product | null): void {
@@ -102,7 +113,7 @@ export class ProductEditComponent implements OnInit, OnDestroy {
         productName: this.product.productName,
         productCode: this.product.productCode,
         starRating: this.product.starRating,
-        description: this.product.description
+        description: this.product.description,
       });
     }
   }
@@ -117,13 +128,14 @@ export class ProductEditComponent implements OnInit, OnDestroy {
     if (this.product && this.product.id) {
       if (confirm(`Really delete the product: ${this.product.productName}?`)) {
         this.productService.deleteProduct(this.product.id).subscribe({
-          next: () => this.productService.changeSelectedProduct(null),
-          error: err => this.errorMessage = err.error
+          next: () =>
+            this.store.dispatch(new productActions.ClearCurrentProduct()),
+          error: (err) => (this.errorMessage = err.error),
         });
       }
     } else {
       // No need to delete, it was never saved
-      this.productService.changeSelectedProduct(null);
+      this.store.dispatch(new productActions.ClearCurrentProduct());
     }
   }
 
@@ -137,13 +149,19 @@ export class ProductEditComponent implements OnInit, OnDestroy {
 
         if (p.id === 0) {
           this.productService.createProduct(p).subscribe({
-            next: product => this.productService.changeSelectedProduct(product),
-            error: err => this.errorMessage = err.error
+            next: (product) =>
+              this.store.dispatch(
+                new productActions.SetCurrentProduct(product)
+              ),
+            error: (err) => (this.errorMessage = err.error),
           });
         } else {
           this.productService.updateProduct(p).subscribe({
-            next: product => this.productService.changeSelectedProduct(product),
-            error: err => this.errorMessage = err.error
+            next: (product) =>
+              this.store.dispatch(
+                new productActions.SetCurrentProduct(product)
+              ),
+            error: (err) => (this.errorMessage = err.error),
           });
         }
       }
@@ -151,5 +169,4 @@ export class ProductEditComponent implements OnInit, OnDestroy {
       this.errorMessage = 'Please correct the validation errors.';
     }
   }
-
 }
